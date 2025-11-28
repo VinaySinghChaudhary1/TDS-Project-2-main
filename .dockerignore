@@ -28,6 +28,7 @@ tests/
 LLMFiles/
 *.env
 .env.example
+Gform.md
 
 # Misc
 *.log
