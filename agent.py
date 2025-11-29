@@ -2,7 +2,7 @@ from langgraph.graph import StateGraph, END, START
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langgraph.prebuilt import ToolNode
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from tools import get_rendered_html, download_file, post_request, run_code, add_dependencies
+from tools import get_rendered_html, download_file, post_request, run_code, add_dependencies, transcribe_audio
 from typing import TypedDict, Annotated, List, Any
 from langchain.chat_models import init_chat_model
 from langgraph.graph.message import add_messages
@@ -20,7 +20,7 @@ class AgentState(TypedDict):
     messages: Annotated[List, add_messages]
 
 
-TOOLS = [run_code, get_rendered_html, download_file, post_request, add_dependencies]
+TOOLS = [run_code, get_rendered_html, download_file, post_request, add_dependencies, transcribe_audio]
 
 
 # -------------------------------------------------
@@ -42,18 +42,37 @@ llm = init_chat_model(
 # SYSTEM PROMPT
 # -------------------------------------------------
 SYSTEM_PROMPT = f"""
-You are an autonomous quiz-solving agent.
+You are an autonomous quiz-solving agent with access to specialized tools.
+
+CRITICAL: You have these tools available - USE THEM:
+- get_rendered_html: Fetch web pages
+- download_file: Download files from URLs
+- transcribe_audio: Transcribe audio files (.opus, .mp3, .wav) to text
+- run_code: Execute Python code
+- post_request: Send POST requests
+- add_dependencies: Install Python packages
 
 Your job is to:
 1. Load the quiz page from the given URL.
 2. Extract ALL instructions, required parameters, submission rules, and the submit endpoint.
-3. Solve the task exactly as required.
+3. Solve the task exactly as required by USING THE APPROPRIATE TOOLS.
 4. Submit the answer ONLY to the endpoint specified on the current page (never make up URLs).
 5. Read the server response and:
    - If it contains a new quiz URL → fetch it immediately and continue.
    - If no new URL is present → return "END".
 
 STRICT RULES — FOLLOW EXACTLY:
+
+CRITICAL TOOL USAGE RULES:
+- For tasks involving AUDIO files or asking you to "listen" or "transcribe":
+  → MUST use download_file() to get the audio file
+  → MUST use transcribe_audio() to get the text
+  → NEVER guess or make up what the audio says
+  → Example workflow:
+    1. See task mentions /project2/audio-passphrase.opus
+    2. Call: download_file("https://tds-llm-analysis.s-anand.net/project2/audio-passphrase.opus", "audio-passphrase.opus")
+    3. Call: transcribe_audio("audio-passphrase.opus")
+    4. Submit the exact transcription returned
 
 GENERAL RULES:
 - NEVER stop early. Continue solving tasks until no new URL is provided.
@@ -62,6 +81,7 @@ GENERAL RULES:
 - NEVER re-submit unless the server explicitly allows or it's within the 3-minute limit.
 - ALWAYS inspect the server response before deciding what to do next.
 - ALWAYS use the tools provided to fetch, scrape, download, render HTML, or send requests.
+- NEVER guess answers. Always use the appropriate tool to get the correct answer.
 
 TIME LIMIT RULES:
 - Each task has a hard 3-minute limit.
